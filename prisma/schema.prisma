@@ -18,6 +18,7 @@ model User {
   isGuest   Boolean   @default(false)
   bookings  Booking[]
   botToken  String?
+  zoho_visitor_id String? @unique
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 }
@@ -31,18 +32,14 @@ model User {
 
 // Parking areas
 model ParkingArea {
-  id             Int           @id @default(autoincrement())
-  city           String
-  name           String        @unique
-  totalSlots     Int
-  address        String?
-  slots          ParkingSlot[]
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  long           Float
-  lat            Float
-  features       String[]
-  price_per_hour Float
+  id         Int           @id @default(autoincrement())
+  city       String
+  name       String        @unique
+  totalSlots Int
+  address    String?
+  slots      ParkingSlot[]
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
 }
 
 // Individual parking slots
@@ -51,23 +48,23 @@ model ParkingSlot {
   parkingArea ParkingArea @relation(fields: [parkingId], references: [id])
   parkingId   Int
   slotNumber  String
+
   bookings    Booking[]
 }
 
 // Bookings table
 model Booking {
-  id             Int         @id @default(autoincrement())
-  user           User?       @relation(fields: [userId], references: [id])
-  userId         Int?
-  slot           ParkingSlot @relation(fields: [slotId], references: [id])
-  slotId         Int
-  startTime      DateTime
-  endTime        DateTime
-  vehicle_number String?
-  phone          String
-  paymentId      String 
-  amount         Float?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  id            Int         @id @default(autoincrement())
+  user          User?       @relation(fields: [userId], references: [id])
+  userId        Int?
+  slot          ParkingSlot @relation(fields: [slotId], references: [id])
+  slotId        Int
+  startTime     DateTime
+  endTime       DateTime
+  phone         String
+  paymentStatus String      @default("pending") // pending, paid, failed
+  amount        Float?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 }
 
