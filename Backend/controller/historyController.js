@@ -1,5 +1,6 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
+const {DB_latest_booking,DB_find_user,DB_history} = require("../service/historyService");
 
 const latest_booking = async (req, res) => {
   try {
@@ -9,17 +10,7 @@ const latest_booking = async (req, res) => {
       return res.status(400).json({ message: "User ID is required" });
     }
 
-    const latestBooking = await prisma.booking.findFirst({
-      where: { userId: userId },
-      orderBy: { createdAt: "desc" }, // latest first
-      include: {
-        slot: {
-          include: {
-            parkingArea: true, // Access area.name & area.city
-          },
-        },
-      },
-    });
+    const latestBooking = await DB_latest_booking(userId);
 
     if (!latestBooking) {
       return res.status(404).json({ message: "No bookings found" });
@@ -52,25 +43,13 @@ const history = async (req, res) => {
       return res.status(400).json({ message: "User ID is required" });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
+    const user = await DB_find_user(userId);
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const history = await prisma.booking.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      include: {
-        slot: {
-          include: {
-            parkingArea: true,
-          },
-        },
-      },
-    });
+    const history = await DB_history(userId);
 
     if (!history.length) {
       return res.status(200).json({

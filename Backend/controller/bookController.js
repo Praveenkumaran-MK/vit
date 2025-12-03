@@ -1,29 +1,35 @@
 
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
+const {DB_area_det,DB_slot_det,DB_conflict,DB_book,DB_find_booking,DB_del_book} = require("../service/bookService");
+const z= require("zod");
+
+const bookShema = z.object({
+  id : z.number().int(),
+  slotId: z.number().int(),
+  startTime: z.string().transform((val) => new Date(val)),
+  endTime: z.string().transform((val) => new Date(val)),
+  phone : z.string(),
+  paymentId: z.string(),
+  vehicle_number: z.string(),
+  amount: z.number(),
+  area : z.string()
+})
+
+
 
 const book = async (req, res) => {
   try {
-    const body = req.body;
+    const body = bookShema.parse(req.body);
     const startTime = new Date(body.startTime);
     const endTime = new Date(body.endTime);
 
-    const area_det = await prisma.parkingArea.findUnique({
-      where: { name: body.area },
-    });
-    const slot_det = await prisma.parkingSlot.findMany({
-      where: { parkingId: area_det.id },
-      select: { id: true, slotNumber: true },
-    });
+    const area_det = await DB_area_det(body);
+    const slot_det = await DB_slot_det(area_det); 
     let availableSlot = null;
 
     for (const slot of slot_det) {
-      const conflict = await prisma.booking.findFirst({
-        where: {
-          slotId: slot.id,
-          AND: [{ startTime: { lt: endTime } }, { endTime: { gt: startTime } }],
-        },
-      });
+      const conflict = await DB_conflict(slot,startTime,endTime); 
 
       if (!conflict) {
         availableSlot = slot;
@@ -36,19 +42,7 @@ const book = async (req, res) => {
       });
     }
 
-    const book = await prisma.booking.create({
-      data: {
-        userId: body.id,
-        slotId: availableSlot.id,
-        startTime,
-        endTime,
-        phone: body.phone,
-        paymentStatus: "pending",
-        paymentId: body.paymentId || null,
-        vehicle_number: body.vehicle_number,
-        amount: body.amount,
-      },
-    });
+    const book =await DB_book(body,availableSlot,startTime,endTime);
 
     if (!book) {
       res.status(400).json({ message: "Booking Failed" });
@@ -70,12 +64,12 @@ const del_book = async (req, res) => {
   try {
     const book_id = Number(req.query.id);
 
-    const book = await prisma.booking.findUnique({ where: { id: book_id } });
+    const book = await DB_find_booking(book_id);
     if (!book) {
       res.status(404).json({ message: "Booking details not found" });
     }
 
-    const del_book = await prisma.booking.delete({ where: { id: book_id } });
+    const del_book = await DB_del_book(book_id);
 
     res.status(200).json({ message: "Canceled Successfully" });
   } catch (error) {
