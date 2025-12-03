@@ -17,6 +17,7 @@ model User {
   feedback  Boolean   @default(true)
   isGuest   Boolean   @default(false)
   bookings  Booking[]
+  
   botToken  String?
   zoho_visitor_id String? @unique
   createdAt DateTime  @default(now())
