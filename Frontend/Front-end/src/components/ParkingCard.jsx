@@ -1,78 +1,61 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { ICONS } from "../constants";
-import Rating from "./Rating";
 
 const decision = (lot) => {
   const address = (lot.address || "").trim();
 
   if (address === "Bengaluru") {
     return "https://content.jdmagicbox.com/comp/def_content/car-parking-management/cars-parked-in-parking-lot-car-parking-management-1-0stjw.jpg";
-  } else if (address === "Chennai") {
-    return "https://media.istockphoto.com/id/172385575/photo/parking.jpg?s=612x612&w=0&k=20&c=nJorPk_qIMe46mLqdX1aDMu1alojHK7oKPOaAbOzQLM=";
-  } else if (address === "Hyderabad") {
-    return "https://watermark.lovepik.com/photo/20211202/large/lovepik-parking-lot-picture_501404976.jpg";
-  } else if (address === "Delhi") {
-    return "https://media.istockphoto.com/id/578832718/photo/public-garage.jpg?s=612x612&w=0&k=20&c=sH5-S64sgWBBU-trmC-LE5IwShx_Xlu1kTRDOczmgzE=";
-  } else if (address === "Mumbai") {
-    return "https://cdn.dnaindia.com/sites/default/files/2019/08/14/858787-underground-parking.jpg?im=FitAndFill=(1200,900)";
-  } else {
-    return lot.image;
   }
+  if (address === "Chennai") {
+    return "https://media.istockphoto.com/id/172385575/photo/parking.jpg?s=612x612&w=0&k=20&c=nJorPk_qIMe46mLqdX1aDMu1alojHK7oKPOaAbOzQLM=";
+  }
+  if (address === "Hyderabad") {
+    return "https://watermark.lovepik.com/photo/20211202/large/lovepik-parking-lot-picture_501404976.jpg";
+  }
+  if (address === "Delhi") {
+    return "https://media.istockphoto.com/id/578832718/photo/public-garage.jpg?s=612x612&w=0&k=20&c=sH5-S64sgWBBU-trmC-LE5IwShx_Xlu1kTRDOczmgzE=";
+  }
+  if (address === "Mumbai") {
+    return "https://cdn.dnaindia.com/sites/default/files/2019/08/14/858787-underground-parking.jpg?im=FitAndFill=(1200,900)";
+  }
+
+  return (
+    lot.image ||
+    "https://via.placeholder.com/400x240?text=Parking+Area"
+  );
+};
+
+// Feature color helper
+const getFeatureStyle = (feature) => {
+  const f = feature.toLowerCase();
+
+  if (f.includes("security") || f.includes("cctv") || f.includes("guard")) {
+    return "bg-red-100 text-red-700 border-red-200";
+  }
+  if (f.includes("ev") || f.includes("electric") || f.includes("charging")) {
+    return "bg-green-100 text-green-700 border-green-200";
+  }
+  if (f.includes("covered") || f.includes("roof") || f.includes("shelter")) {
+    return "bg-blue-100 text-blue-700 border-blue-200";
+  }
+  if (f.includes("wash") || f.includes("clean")) {
+    return "bg-cyan-100 text-cyan-700 border-cyan-200";
+  }
+  if (f.includes("valet") || f.includes("service")) {
+    return "bg-purple-100 text-purple-700 border-purple-200";
+  }
+  if (f.includes("24") || f.includes("hour")) {
+    return "bg-yellow-100 text-yellow-700 border-yellow-200";
+  }
+
+  return "bg-gray-100 text-gray-700 border-gray-200";
 };
 
 const ParkingCard = ({ lot }) => {
-  console.log("ParkingCard - lot features:", lot.features, "type:", typeof lot.features);
-
-  const availabilityRatio = lot.availableSpots / lot.totalSpots;
-  const availabilityColor =
-    availabilityRatio > 0.5
-      ? "text-green-600"
-      : availabilityRatio > 0.2
-      ? "text-yellow-500"
-      : "text-red-500";
-
-  const getFeatureStyle = (feature) => {
-    const featureLower = feature.toLowerCase();
-
-    if (
-      featureLower.includes("security") ||
-      featureLower.includes("cctv") ||
-      featureLower.includes("guard")
-    ) {
-      return "bg-gradient-to-r from-red-100 to-red-200 text-red-700 border border-red-200";
-    }
-
-    if (
-      featureLower.includes("ev") ||
-      featureLower.includes("electric") ||
-      featureLower.includes("charging")
-    ) {
-      return "bg-gradient-to-r from-green-100 to-green-200 text-green-700 border border-green-200";
-    }
-
-    if (
-      featureLower.includes("covered") ||
-      featureLower.includes("shelter") ||
-      featureLower.includes("roof")
-    ) {
-      return "bg-gradient-to-r from-blue-100 to-blue-200 text-blue-700 border border-blue-200";
-    }
-
-    if (featureLower.includes("wash") || featureLower.includes("clean")) {
-      return "bg-gradient-to-r from-cyan-100 to-cyan-200 text-cyan-700 border border-cyan-200";
-    }
-
-    if (featureLower.includes("valet") || featureLower.includes("service")) {
-      return "bg-gradient-to-r from-purple-100 to-purple-200 text-purple-700 border border-purple-200";
-    }
-
-    if (featureLower.includes("24") || featureLower.includes("hour")) {
-      return "bg-gradient-to-r from-yellow-100 to-yellow-200 text-yellow-700 border border-yellow-200";
-    }
-
-    return "bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 border border-gray-200";
-  };
+  const totalSlots = Number(lot.totalSlots) || 0;
+  const amount = Number(lot.amount) || 0;
 
   return (
     <div className="bg-white rounded-lg shadow-lg hover:shadow-2xl hover:scale-105 transition duration-300 overflow-hidden flex flex-col">
@@ -83,41 +66,30 @@ const ParkingCard = ({ lot }) => {
       />
 
       <div className="p-4 flex flex-col flex-grow">
-
+        {/* Title */}
         <div className="flex justify-between items-start mb-2">
-          <h3 className="text-xl font-bold text-gray-900">{lot.name}</h3>
-          <Rating rating={lot.rating} />
+          <h3 className="text-xl font-bold text-gray-900">
+            {lot.name || "Parking Area"}
+          </h3>
         </div>
 
+        {/* Address */}
         <p className="text-gray-600 mb-4 flex items-center gap-1">
           {ICONS.LOCATION}
-          {lot.address}
+          {lot.address || "Address not available"}
         </p>
 
         {/* Features */}
-        {lot.features && Array.isArray(lot.features) && lot.features.length > 0 ? (
+        {Array.isArray(lot.features) && lot.features.length > 0 ? (
           <div className="flex flex-wrap gap-2 mb-4">
             {lot.features.map((feature, index) => (
               <span
                 key={index}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold shadow-sm transition-all duration-200 hover:scale-105 hover:shadow-md cursor-default ${getFeatureStyle(
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold shadow-sm border ${getFeatureStyle(
                   feature
                 )}`}
               >
                 {feature}
-              </span>
-            ))}
-          </div>
-        ) : lot.features && typeof lot.features === "string" ? (
-          <div className="flex flex-wrap gap-2 mb-4">
-            {lot.features.split(",").map((feature, index) => (
-              <span
-                key={index}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold shadow-sm transition-all duration-200 hover:scale-105 hover:shadow-md cursor-default ${getFeatureStyle(
-                  feature.trim()
-                )}`}
-              >
-                {feature.trim()}
               </span>
             ))}
           </div>
@@ -129,7 +101,7 @@ const ParkingCard = ({ lot }) => {
           </div>
         )}
 
-        {/* Distance */}
+        {/* Distance (optional) */}
         {lot.distance !== undefined && (
           <div className="mb-3 p-2 bg-blue-50 rounded-lg">
             <div className="flex items-center text-blue-700 text-sm">
@@ -143,16 +115,24 @@ const ParkingCard = ({ lot }) => {
           </div>
         )}
 
-        {/* Price */}
+        {/* Slots + Price */}
         <div className="grid grid-cols-2 gap-4 mb-4 text-sm text-gray-700">
           <div className="flex items-center">
             {ICONS.PRICE}
             <span>
-              <strong>₹{lot.pricePerHour.toFixed(2)}</strong> / hour
+              <strong>₹{amount.toFixed(2)}</strong> / hour
+            </span>
+          </div>
+
+          <div className="flex items-center">
+            {ICONS.SLOT}
+            <span className="font-medium">
+              {totalSlots} slots
             </span>
           </div>
         </div>
 
+        {/* Button */}
         <div className="mt-auto">
           <Link
             to={`/book/${lot.id}`}
@@ -161,7 +141,6 @@ const ParkingCard = ({ lot }) => {
             View Details & Book
           </Link>
         </div>
-
       </div>
     </div>
   );

@@ -1,26 +1,27 @@
 // File: src/services/parkingChatbot.js
-// Chatbot service to handle parking queries with backend integration
+// Chatbot service tuned for PostgreSQL database (NO firebase, NO rating, NO slot grid)
 
 class ParkingChatbot {
-  constructor(backendUrl = 'http://localhost:3000') {
+  constructor(backendUrl = "http://localhost:3000") {
     this.backendUrl = backendUrl;
   }
 
-  // Parse user message to extract booking details
+  // ---------------------------
+  // 1. Parse the user message
+  // ---------------------------
   parseUserMessage(message) {
     const parsed = {
       location: null,
       date: null,
       startTime: null,
       endTime: null,
-      duration: null
     };
 
-    // Extract location (common Indian cities and areas)
+    // Extract common locations (Indian cities + major areas)
     const locationPatterns = [
-      /(?:for|in)\s+([a-zA-Z\s]+?)(?:\s+(?:from|on|at|days|area|city))/i,
-      /(?:bengaluru|bangalore|mumbai|delhi|chennai|hyderabad|pune|kolkata)/gi,
-      /(?:downtown|city center|airport|electronic city|koramangala|indiranagar)/gi
+      /(?:in|at|near|around)\s+([a-zA-Z\s]+)/i,
+      /(bengaluru|bangalore|mumbai|delhi|chennai|hyderabad|pune|kolkata)/gi,
+      /(electronic city|koramangala|indiranagar|airport|bus stand|railway station)/gi,
     ];
 
     for (const pattern of locationPatterns) {
@@ -31,136 +32,163 @@ class ParkingChatbot {
       }
     }
 
-    // Extract date
-    const dateMatches = [
-      message.match(/(\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)/i),
-      message.match(/(august\s+\d{1,2}(?:st|nd|rd|th)?)/i),
-      message.match(/(\d{1,2}\/\d{1,2}\/?\d{0,4})/),
-      message.match(/(today|tomorrow)/i)
-    ];
-    
-    for (const match of dateMatches) {
-      if (match) {
-        parsed.date = match[1];
-        break;
-      }
-    }
-
     // Extract time range
-    const timeMatch = message.match(/from\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s+to\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i);
+    const timeMatch = message.match(
+      /from\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s+to\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i
+    );
     if (timeMatch) {
       parsed.startTime = timeMatch[1];
       parsed.endTime = timeMatch[2];
     }
 
+    // Extract date
+    const dateMatch =
+      message.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4})\b/) ||
+      message.match(/\b(today|tomorrow)\b/i);
+
+    if (dateMatch) parsed.date = dateMatch[1];
+
     return parsed;
   }
 
-  // Search for parking spaces
-  async searchParkingSpaces(location, time = null) {
+  // ---------------------------
+  // 2. Search parking spaces (PostgreSQL)
+  // ---------------------------
+  async searchParkingSpaces(location) {
     try {
-      console.log('Searching for parking in:', location);
-      
-      const response = await fetch(`${this.backendUrl}/api/parking-spaces`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          location: location,
-          time: time || new Date().toISOString()
-        })
+      const response = await fetch(`${this.backendUrl}/v1/display_areas`);
+      const data = await response.json();
+
+      // Filter by name/address/city
+      const filtered = data.filter((spot) => {
+        const loc = location.toLowerCase();
+        return (
+          spot.name?.toLowerCase().includes(loc) ||
+          spot.address?.toLowerCase().includes(loc) ||
+          spot.city?.toLowerCase().includes(loc)
+        );
       });
 
-      const data = await response.json();
-      console.log('Backend response:', data);
-      return data;
+      return {
+        success: true,
+        count: filtered.length,
+        data: filtered,
+      };
     } catch (error) {
-      console.error('Error searching parking spaces:', error);
-      return { 
-        success: false, 
-        message: 'Sorry, I cannot connect to the parking service right now. Please try again later.' 
+      console.error("Chatbot search error:", error);
+      return {
+        success: false,
+        message:
+          "I couldn't connect to the parking service. Please try again later.",
       };
     }
   }
 
-  // Format parking results for chat display
+  // ---------------------------
+  // 3. Format results for chat UI
+  // ---------------------------
   formatParkingResults(results) {
     if (!results.success || !results.data || results.data.length === 0) {
-      return `❌ **No parking spaces found**\n\nTry searching for:\n• Downtown areas\n• Specific neighborhoods\n• Popular locations like "Electronic City", "Koramangala", etc.`;
+      return (
+        "❌ **No parking spaces found.**\n\n" +
+        "Try phrases like:\n" +
+        "• *Parking in Electronic City*\n" +
+        "• *Find parking near Koramangala*\n" +
+        "• *Parking in Chennai*"
+      );
     }
 
-    let response = `🅿️ **Found ${results.count} available parking spot${results.count > 1 ? 's' : ''}:**\n\n`;
-    
-    results.data.slice(0, 3).forEach((spot, index) => { // Show max 3 results
-      response += `**${index + 1}. ${spot.name}**\n`;
-      response += `📍 ${spot.address}\n`;
-      response += `💰 ${spot.price}\n`;
-      response += `🚗 ${spot.availability}\n`;
-      
-      if (spot.rating > 0) {
-        response += `⭐ ${spot.rating}/5\n`;
-      }
-      
-      if (spot.features && spot.features.length > 0) {
-        response += `✨ ${spot.features.join(', ')}\n`;
-      }
-      
-      response += `\n`;
+    let msg = `🅿️ **Found ${results.count} parking area${
+      results.count > 1 ? "s" : ""
+    }:**\n\n`;
+
+    results.data.slice(0, 3).forEach((spot, i) => {
+      msg += `**${i + 1}. ${spot.name}**\n`;
+      msg += `📍 ${spot.address}\n`;
+      msg += `💰 ₹${spot.amount} per hour\n`;
+      msg += `🚗 Total Slots: ${spot.totalslots}\n`;
+      msg += `🖼 Image: ${spot.image ? "Available" : "Not Provided"}\n\n`;
     });
 
     if (results.data.length > 3) {
-      response += `... and ${results.data.length - 3} more spots available.\n\n`;
+      msg += `...and **${results.count - 3} more**.\n\n`;
     }
 
-    response += `\n🔗 **Ready to book?** Click on any parking spot above to proceed with booking!`;
-    return response;
+    msg += `🔗 **You can tap a parking card above to book instantly!**`;
+
+    return msg;
   }
 
-  // Main chat response handler
+  // ---------------------------
+  // 4. Main handler
+  // ---------------------------
   async handleUserMessage(message) {
-    const userMessage = message.toLowerCase().trim();
-    
-    // Handle parking search requests
-    if (this.isParkingQuery(userMessage)) {
+    const clean = message.toLowerCase();
+
+    // Greetings
+    if (this.isGreeting(clean)) {
+      return (
+        "👋 **Hello! I'm Parky, your parking assistant!**\n\n" +
+        "Tell me where you need a parking spot.\n\n" +
+        "**Try:**\n" +
+        "• *Find parking in Electronic City*\n" +
+        "• *Parking near Koramangala*\n"
+      );
+    }
+
+    // Parking requests
+    if (this.isParkingQuery(clean)) {
       const parsed = this.parseUserMessage(message);
-      
-      if (parsed.location) {
-        const results = await this.searchParkingSpaces(parsed.location);
-        return this.formatParkingResults(results);
-      } else {
-        return "🔍 **I'd love to help you find parking!**\n\nPlease tell me the location where you need parking.\n\n**Examples:**\n• \"Find parking in Bengaluru\"\n• \"Book a spot in Electronic City\"\n• \"Parking near Koramangala\"";
+
+      if (!parsed.location) {
+        return (
+          "🔍 Tell me where you need parking.\n\n" +
+          "**Example:**\n• *Find parking in Chennai*\n• *Parking near Airport*"
+        );
       }
-    }
-    
-    // Handle booking confirmations
-    if (userMessage.includes('book') && (userMessage.includes('yes') || userMessage.includes('confirm'))) {
-      return "✅ **Great choice!**\n\nTo complete your booking:\n1. Click the **'View Details & Book'** button on your chosen spot\n2. Select your time slot\n3. Complete payment\n4. Get your QR code instantly!\n\nNeed help with anything else?";
-    }
-    
-    // Handle help requests
-    if (userMessage.includes('help') || userMessage.includes('how')) {
-      return "🤖 **Hi! I'm Parky, your parking assistant**\n\nI can help you:\n• 🔍 Find available parking spots\n• 💰 Compare prices in real-time\n• 📅 Check availability for specific times\n• 🚗 Book spots instantly\n\n**Just tell me where you need parking!**\n\nExample: *\"Find parking in Bengaluru for 2 hours\"*";
+
+      const results = await this.searchParkingSpaces(parsed.location);
+      return this.formatParkingResults(results);
     }
 
-    // Handle greetings
-    if (this.isGreeting(userMessage)) {
-      return "👋 **Hello! I'm Parky**\n\nI'm here to help you find and book parking spots quickly and easily!\n\n🔍 **Where would you like to park?**\n\nJust tell me the location and I'll show you available spots with real-time pricing.";
+    // Booking confirmation
+    if (clean.includes("book") && clean.includes("yes")) {
+      return (
+        "🚗 **Great!**\n\n" +
+        "Select a parking card from above → choose time → pay → get your QR ticket instantly!"
+      );
     }
-    
-    // Default response
-    return "🤔 **I'm not sure I understand**\n\nI can help you find parking spots! Try asking:\n• \"Find parking in [location]\"\n• \"Book a spot near [area]\"\n• \"Show parking options in [city]\"\n\nWhat location are you looking for?";
+
+    // Help
+    if (clean.includes("help")) {
+      return (
+        "🤖 **I can help you find and book parking!**\n\n" +
+        "Try:\n" +
+        "• *Find parking in Delhi*\n" +
+        "• *Parking near Bus Stand*\n" +
+        "• *Show parking options in Chennai*"
+      );
+    }
+
+    // Default fallback
+    return (
+      "🤔 I didn't understand that.\n\n" +
+      "Tell me where you need parking.\n\n" +
+      "**Example:** *Parking in Koramangala*"
+    );
   }
 
-  // Helper methods
+  // ---------------------------
+  // Helper
+  // ---------------------------
   isParkingQuery(message) {
-    const parkingKeywords = ['parking', 'park', 'spot', 'book', 'reserve', 'find', 'need', 'looking'];
-    return parkingKeywords.some(keyword => message.includes(keyword));
+    const keys = ["parking", "park", "spot", "find", "near", "book", "reserve"];
+    return keys.some((k) => message.includes(k));
   }
 
-  isGreeting(message) {
-    const greetings = ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening'];
-    return greetings.some(greeting => message.includes(greeting));
+  isGreeting(msg) {
+    const g = ["hi", "hello", "hey", "good morning", "good evening"];
+    return g.some((x) => msg.includes(x));
   }
 }
 

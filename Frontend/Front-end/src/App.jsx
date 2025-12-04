@@ -1,12 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import Header from "./components/Header";
 import Footer from "./components/Footer";
-import Chatbot from "./components/Chatbot";
-// import AuthModal from "./components/AuthModal"; 
-import { AppProvider } from "./context/AppContext";
+import AuthModal from "./components/AuthModal";
 
+import { AppProvider } from "./hooks/useAppContext.jsx";
+
+// Pages
 import HomePage from "./pages/HomePage";
 import FindParkingPage from "./pages/FindParkingPage";
 import BookingPage from "./pages/BookingPage";
@@ -15,30 +16,45 @@ import ProfilePage from "./pages/ProfilePage";
 import PaymentPage from "./pages/PaymentPage";
 import NotFoundPage from "./pages/NotFoundPage";
 
-/* import About from "./pages/About";
-import Contact from "./pages/Contact";
-import FAQ from "./pages/FAQ";
-import Terms from "./pages/Terms";*/
-
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
+// Backend authentication (PostgreSQL + JWT)
+import backendAuth from "./services/backendService.js";
 
-// ----------------------------
-//     Protected Route Wrapper
-// ----------------------------
+/* ---------------------------------------------
+   Protected Route Wrapper
+--------------------------------------------- */
 const ProtectedRoute = ({ user, children }) => {
   return user ? children : <Navigate to="/" replace />;
 };
 
-
 const App = () => {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [redirectPath, setRedirectPath] = useState("/");
-  const user = null; // ← replace with useAuthState or global context
+  const [user, setUser] = useState(null);
 
+  /* ---------------------------------------------
+     Load logged-in user (JWT → /auth/me)
+  --------------------------------------------- */
+  useEffect(() => {
+    const loadUser = async () => {
+      try {
+        const res = await backendAuth.getCurrentUser();
+        setUser(res?.user || null);
+      } catch {
+        setUser(null);
+      }
+    };
 
-  // Handle when user tries to visit a protected page
+    loadUser();
+
+    
+  }, []);
+
+  /* ---------------------------------------------
+     Asking auth before entering a protected route
+  --------------------------------------------- */
   const requireAuth = (path) => {
     if (!user) {
       setRedirectPath(path);
@@ -48,14 +64,16 @@ const App = () => {
     return true;
   };
 
-
-  // After successful login
-  const handleAuthSuccess = () => {
-    setAuthModalOpen(false);
-    if (user) {
-      window.location.hash = `#${redirectPath}`;
-    }
-  };
+  /* ---------------------------------------------
+     After login
+  --------------------------------------------- */
+  const handleAuthSuccess = async () => {
+  const u = await backendAuth.getCurrentUser();
+  setUser(u);
+  setAuthModalOpen(false);
+  const dest = redirectPath || "/";
+  window.location.hash = `#${dest}`;
+};
 
 
   return (
@@ -67,9 +85,10 @@ const App = () => {
           open={authModalOpen}
           onClose={() => setAuthModalOpen(false)}
           onSuccess={handleAuthSuccess}
+          user={user}
         />
 
-        <div className="flex flex-col min-h-screen font-sans text-gray-900">
+        <div className="flex flex-col min-h-screen text-gray-900">
           <Header
             user={user}
             onLoginClick={() => setAuthModalOpen(true)}
@@ -77,20 +96,14 @@ const App = () => {
           />
 
           <main className="flex-grow container mx-auto px-4 py-8">
-
             <Routes>
-              {/* ---------------------
-                    Public Routes
-                --------------------- */}
-              <Route path="/" element={<HomePage user={user} onProtectedNav={requireAuth} />} />
-            {/*   <Route path="/about" element={<About />} />
-              <Route path="/contact" element={<Contact />} />
-              <Route path="/faq" element={<FAQ />} />
-              <Route path="/terms" element={<Terms />} /> */}
+              {/* Public */}
+              <Route
+                path="/"
+                element={<HomePage user={user} onProtectedNav={requireAuth} />}
+              />
 
-              {/* ---------------------
-                 Protected Routes
-              ---------------------- */}
+              {/* Protected */}
               <Route
                 path="/find"
                 element={
@@ -99,6 +112,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/book/:id"
                 element={
@@ -107,6 +121,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/payment"
                 element={
@@ -115,6 +130,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/ticket"
                 element={
@@ -123,6 +139,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/profile"
                 element={
@@ -132,13 +149,12 @@ const App = () => {
                 }
               />
 
-              {/* Not found */}
+              {/* 404 */}
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </main>
 
           <Footer />
-          <Chatbot />
         </div>
       </AppProvider>
     </HashRouter>

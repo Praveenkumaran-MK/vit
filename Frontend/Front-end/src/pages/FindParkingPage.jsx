@@ -24,35 +24,39 @@ const FindParkingPage = () => {
   const [lots, setLots] = useState([]);
   const [filteredLots, setFilteredLots] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState(""); // Initialize as empty string
+  const [searchTerm, setSearchTerm] = useState("");
   const [priceFilter, setPriceFilter] = useState(100);
-  const [ratingFilter, setRatingFilter] = useState(0);
   const [featuresFilter, setFeaturesFilter] = useState([]);
   const [isFilterVisible, setIsFilterVisible] = useState(false);
   const [nearbyLoading, setNearbyLoading] = useState(false);
   const [showNearbyOnly, setShowNearbyOnly] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [queryMode, setQueryMode] = useState(false);
-  const [routeFilter, setRouteFilter] = useState({ city: "", start: null, end: null });
 
+  const [routeFilter, setRouteFilter] = useState({
+    city: "",
+    start: null,
+    end: null,
+  });
+
+  const [error, setError] = useState("");
+
+  // ---------------- FETCH DATA ----------------
   const fetchData = async (isInitialLoad = false) => {
     if (isInitialLoad) setLoading(true);
+
     try {
       if (showNearbyOnly) {
-        // Keep nearby view consistent during refresh
         const nearbyAreas = await getNearbyParkingAreas(5);
         setLots(nearbyAreas);
         setFilteredLots(nearbyAreas);
       } else if (queryMode && routeFilter.city) {
-        // Keep query mode consistent during refresh
         if (routeFilter.start && routeFilter.end) {
           let results = await searchParkingAreasWithAvailability(
             routeFilter.city,
             routeFilter.start,
             routeFilter.end
           );
-          // Show only arenas with availability
-          results = results.filter((a) => (a.availableSpotsForTime || 0) > 0);
           setLots(results);
           setFilteredLots(results);
         } else {
@@ -61,21 +65,21 @@ const FindParkingPage = () => {
           setFilteredLots(results);
         }
       } else {
-        console.log("🔍 Fetching parking data...");
         const data = await fetchAllParkingAreas();
-        console.log("📊 Received parking data:", data);
-        console.log("📊 Number of parking areas:", data.length);
         setLots(data);
+        setFilteredLots(data);
       }
-    } catch (error) {
-      console.error("❌ Error fetching parking data:", error);
-      // setError("Failed to fetch parking data"); // Note: setError is not defined in your original code
+
+      setError("");
+    } catch (err) {
+      console.error("❌ Error fetching parking data:", err);
+      setError("Failed to fetch parking data. Please try again.");
     } finally {
       if (isInitialLoad) setLoading(false);
     }
   };
 
-  // Handle URL parameters on component mount and when URL changes
+  // ---------------- HANDLE URL QUERY ----------------
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const searchParam = params.get("search");
@@ -83,23 +87,17 @@ const FindParkingPage = () => {
     const start = params.get("start");
     const end = params.get("end");
 
-    const toTitleCaseSingleWord = (word) => {
-      if (!word) return "";
-      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-    };
+    const toTitleCase = (word) =>
+      word ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase() : "";
 
-    const city = rawCity ? toTitleCaseSingleWord(rawCity) : "";
+    const city = rawCity ? toTitleCase(rawCity) : "";
 
-    // Handle search parameter from homepage
     if (searchParam) {
-      const decodedSearch = decodeURIComponent(searchParam);
-      setSearchTerm(decodedSearch);
-      // Automatically search when coming from homepage
+      setSearchTerm(decodeURIComponent(searchParam));
       setShowNearbyOnly(false);
       setQueryMode(false);
     }
 
-    // Handle chatbot route params: /find?city=Name&start=iso&end=iso
     if (city) {
       setQueryMode(true);
       setShowNearbyOnly(false);
@@ -111,7 +109,6 @@ const FindParkingPage = () => {
         try {
           if (start && end) {
             let results = await searchParkingAreasWithAvailability(city, start, end);
-            results = results.filter((a) => (a.availableSpotsForTime || 0) > 0);
             setLots(results);
             setFilteredLots(results);
           } else {
@@ -119,34 +116,38 @@ const FindParkingPage = () => {
             setLots(results);
             setFilteredLots(results);
           }
+          setError("");
         } catch (err) {
-          console.error("Error applying route search:", err);
+          setError("Failed to apply route filters.");
         } finally {
           setLoading(false);
         }
       };
+
       run();
     } else if (!searchParam) {
-      // No query params at all
       setQueryMode(false);
       setRouteFilter({ city: "", start: null, end: null });
       setSearchTerm("");
     }
   }, [location.search]);
 
+  // ------------ Periodic Refresh ------------
   useEffect(() => {
     fetchData(true);
-    const intervalId = setInterval(() => fetchData(false), 5000); // Refresh data every 5 seconds
-    return () => clearInterval(intervalId);
+    const interval = setInterval(() => fetchData(false), 5000);
+    return () => clearInterval(interval);
   }, [showNearbyOnly, queryMode, routeFilter.city, routeFilter.start, routeFilter.end]);
 
+  // ---------------- FILTER LOTS ----------------
   useEffect(() => {
     let results = lots.filter(
       (lot) =>
-        (lot.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (lot.address || lot.location || "").toLowerCase().includes(searchTerm.toLowerCase())) &&
-        (lot.pricePerHour || 0) <= priceFilter &&
-        (lot.rating || 0) >= ratingFilter
+        (lot.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (lot.address || "")
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase())) &&
+        (lot.amount || 0) <= priceFilter
     );
 
     if (featuresFilter.length > 0) {
@@ -154,9 +155,11 @@ const FindParkingPage = () => {
         featuresFilter.every((feature) => (lot.features || []).includes(feature))
       );
     }
-    setFilteredLots(results);
-  }, [searchTerm, lots, priceFilter, ratingFilter, featuresFilter]);
 
+    setFilteredLots(results);
+  }, [searchTerm, lots, priceFilter, featuresFilter]);
+
+  // ---------------- HANDLERS ----------------
   const handleFeatureToggle = (feature) => {
     setFeaturesFilter((prev) =>
       prev.includes(feature)
@@ -169,14 +172,13 @@ const FindParkingPage = () => {
     try {
       setNearbyLoading(true);
       setShowNearbyOnly(true);
-      const nearbyAreas = await getNearbyParkingAreas(5); // 5km radius
+      const nearbyAreas = await getNearbyParkingAreas(5);
       setLots(nearbyAreas);
       setFilteredLots(nearbyAreas);
-    } catch (error) {
-      console.error("Error fetching nearby parking:", error);
-      alert(
-        "Could not fetch nearby parking. Please check your location permissions."
-      );
+      setError("");
+    } catch (err) {
+      setError("Could not fetch nearby parking.");
+      alert("Please check your location permissions.");
     } finally {
       setNearbyLoading(false);
     }
@@ -192,19 +194,20 @@ const FindParkingPage = () => {
     try {
       setSearchLoading(true);
       setShowNearbyOnly(false);
-      setQueryMode(false); // Exit query mode when manually searching
+      setQueryMode(false);
+
       const allAreas = await fetchAllParkingAreas();
-      // Filter areas by search term
-      const matchingAreas = allAreas.filter(
+      const matching = allAreas.filter(
         (area) =>
-          area.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (area.address || area.location || "").toLowerCase().includes(searchTerm.toLowerCase())
+          area.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (area.address || "").toLowerCase().includes(searchTerm.toLowerCase())
       );
-      setLots(matchingAreas);
-      setFilteredLots(matchingAreas);
-    } catch (error) {
-      console.error("Error searching parking areas:", error);
-      alert("Could not search parking areas. Please try again.");
+
+      setLots(matching);
+      setFilteredLots(matching);
+      setError("");
+    } catch (err) {
+      setError("Could not search parking areas.");
     } finally {
       setSearchLoading(false);
     }
@@ -212,7 +215,6 @@ const FindParkingPage = () => {
 
   const handleSearchInputChange = (e) => {
     setSearchTerm(e.target.value);
-    // If search term is cleared, show all parking
     if (!e.target.value.trim()) {
       setShowNearbyOnly(false);
       setQueryMode(false);
@@ -222,11 +224,10 @@ const FindParkingPage = () => {
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
-    if (searchTerm.trim()) {
-      handleSearchParking();
-    }
+    if (searchTerm.trim()) handleSearchParking();
   };
 
+  // ---------------- UI ----------------
   return (
     <div>
       <h1 className="text-4xl font-bold text-center mb-2 text-gray-900">
@@ -236,90 +237,40 @@ const FindParkingPage = () => {
         Real-time availability and dynamic pricing at your fingertips.
       </p>
 
+      {error && (
+        <div className="mb-4 max-w-3xl mx-auto p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-center text-sm">
+          {error}
+        </div>
+      )}
+
+      {/* FILTER BUTTONS */}
       <div className="mb-6 flex justify-center lg:justify-start gap-4">
         <button
           onClick={() => setIsFilterVisible(!isFilterVisible)}
-          className="bg-white hover:bg-gray-100 text-gray-900 font-bold py-2 px-6 rounded-lg shadow-md transition-colors flex items-center gap-2"
-          aria-expanded={isFilterVisible}
+          className="bg-white hover:bg-gray-100 text-gray-900 font-bold py-2 px-6 rounded-lg shadow-md flex items-center gap-2"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
-            />
-          </svg>
           {isFilterVisible ? "Hide" : "Show"} Filters
         </button>
 
         <button
           onClick={handleNearbyParking}
           disabled={nearbyLoading}
-          className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-colors flex items-center gap-2 disabled:opacity-50"
+          className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg shadow-md"
         >
-          {nearbyLoading ? (
-            <svg
-              className="animate-spin h-5 w-5"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              ></circle>
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
-          ) : (
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-              />
-            </svg>
-          )}
           {nearbyLoading ? "Finding..." : "Nearby Parking"}
         </button>
 
         {showNearbyOnly && (
           <button
             onClick={handleShowAllParking}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-colors"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg shadow-md"
           >
             Show All Parking
           </button>
         )}
       </div>
 
+      {/* Nearby Message */}
       {showNearbyOnly && (
         <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
           <p className="text-green-800 font-medium">
@@ -329,107 +280,58 @@ const FindParkingPage = () => {
       )}
 
       <div className="flex flex-col lg:flex-row gap-8">
-        {/* Filter Sidebar */}
+        {/* FILTER SIDEBAR */}
         {isFilterVisible && (
           <aside className="lg:w-1/4">
             <div className="bg-white p-6 rounded-lg shadow-lg sticky top-24">
               <h3 className="text-xl font-bold mb-4 border-b pb-2">
                 Filter Options
               </h3>
+
               <div className="space-y-6">
+                {/* Search */}
                 <div>
-                  <label
-                    htmlFor="search"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Search
                   </label>
                   <form onSubmit={handleSearchSubmit} className="flex gap-2">
                     <input
-                      id="search"
                       type="text"
                       placeholder="Name or address..."
                       value={searchTerm}
                       onChange={handleSearchInputChange}
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-yellow-500 focus:outline-none"
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-yellow-500"
                     />
                     <button
                       type="submit"
                       disabled={searchLoading || !searchTerm.trim()}
-                      className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600"
                     >
-                      {searchLoading ? (
-                        <svg
-                          className="animate-spin h-4 w-4"
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                        >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          ></circle>
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          ></path>
-                        </svg>
-                      ) : (
-                        "Search"
-                      )}
+                      {searchLoading ? "..." : "Search"}
                     </button>
                   </form>
                 </div>
 
+                {/* Price */}
                 <div>
-                  <label
-                    htmlFor="price"
-                    className="block text-sm font-medium text-gray-700"
-                  >
+                  <label className="block text-sm font-medium text-gray-700">
                     Max Price:{" "}
                     <span className="font-bold text-green-600">
                       ₹{priceFilter.toFixed(2)}
                     </span>
                   </label>
                   <input
-                    id="price"
                     type="range"
                     min="20"
-                    max="100"
-                    step="5"
+                    max="200"
+                    step="10"
                     value={priceFilter}
                     onChange={(e) => setPriceFilter(Number(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-yellow-500"
+                    className="w-full cursor-pointer"
                   />
                 </div>
 
-                <div>
-                  <label
-                    htmlFor="rating"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    Min Rating:{" "}
-                    <span className="font-bold text-yellow-500">
-                      {ratingFilter.toFixed(1)} ★
-                    </span>
-                  </label>
-                  <input
-                    id="rating"
-                    type="range"
-                    min="0"
-                    max="5"
-                    step="0.1"
-                    value={ratingFilter}
-                    onChange={(e) => setRatingFilter(Number(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-yellow-500"
-                  />
-                </div>
-
+                {/* Features */}
                 <div>
                   <h4 className="text-sm font-medium text-gray-700 mb-2">
                     Features
@@ -439,7 +341,7 @@ const FindParkingPage = () => {
                       <button
                         key={feature}
                         onClick={() => handleFeatureToggle(feature)}
-                        className={`px-3 py-1 text-sm rounded-full border-2 transition-colors ${
+                        className={`px-3 py-1 text-sm rounded-full border-2 ${
                           featuresFilter.includes(feature)
                             ? "bg-green-600 text-white border-green-600"
                             : "bg-white text-gray-700 border-gray-300 hover:border-green-600"
@@ -455,16 +357,14 @@ const FindParkingPage = () => {
           </aside>
         )}
 
-        {/* Main Content */}
+        {/* MAIN CONTENT */}
         <main className={isFilterVisible ? "lg:w-3/4" : "w-full"}>
           {loading || nearbyLoading || searchLoading ? (
             <Spinner />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-8">
               {filteredLots.length > 0 ? (
-                filteredLots.map((lot) => (
-                  <ParkingCard key={lot.id} lot={lot} />
-                ))
+                filteredLots.map((lot) => <ParkingCard key={lot.id} lot={lot} />)
               ) : (
                 <div className="col-span-full text-center py-16 bg-white rounded-lg shadow-lg">
                   <p className="text-xl text-gray-500">
@@ -476,9 +376,9 @@ const FindParkingPage = () => {
                   </p>
                   <p className="text-gray-400 mt-2">
                     {showNearbyOnly
-                      ? "Try expanding your search radius or check location permissions."
+                      ? "Try expanding your search radius."
                       : searchTerm.trim()
-                      ? "Try a different search term or check your spelling."
+                      ? "Try a different search term."
                       : "Try adjusting your filters."}
                   </p>
                 </div>

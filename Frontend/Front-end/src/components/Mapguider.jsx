@@ -12,24 +12,27 @@ import {
 import L from "leaflet";
 import axios from "axios";
 
-// Routing services
+// NOTE:
+// These routing services run purely on frontend.
+// Later, you can shift them to backend for security.
 const ROUTING_SERVICES = {
   ORS: {
     url: "https://api.openrouteservice.org/v2/directions/driving-car",
-    key: "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImEyZmU4NmY3ZDU3YjQ4YjZiMjYzMTk0NzljZWQyMmIyIiwiaCI6Im11cm11cjY0In0=",
+    key: "YOUR_ORS_KEY_HERE", // keep dummy in frontend
   },
   OSRM: {
     url: "https://router.project-osrm.org/route/v1/driving",
   },
 };
 
-// Component to auto-fit map bounds
+// Auto-fit bounds to route + markers
 const MapBounds = ({ userLocation, destination, routeCoords }) => {
   const map = useMap();
 
   useEffect(() => {
     if (userLocation && destination) {
       const bounds = L.latLngBounds([userLocation, destination]);
+
       if (routeCoords.length > 0) bounds.extend(routeCoords);
 
       map.fitBounds(bounds, { padding: [20, 20] });
@@ -44,12 +47,15 @@ const Mapguider = ({ destination }) => {
   const [routeCoords, setRouteCoords] = useState([]);
   const [isRouting, setIsRouting] = useState(false);
   const [routingService, setRoutingService] = useState(null);
+  const [routingError, setRoutingError] = useState("");
 
   const routeCalculatedRef = useRef(false);
   const lastRouteKeyRef = useRef("");
   const routeTimeoutRef = useRef(null);
 
-  // Get user's current location
+  // -----------------------------
+  // Get user's live location
+  // -----------------------------
   useEffect(() => {
     if (!navigator.geolocation) {
       alert("Geolocation not supported by your browser");
@@ -57,11 +63,8 @@ const Mapguider = ({ destination }) => {
     }
 
     const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const newLocation = [
-          position.coords.latitude,
-          position.coords.longitude,
-        ];
+      (pos) => {
+        const newLocation = [pos.coords.latitude, pos.coords.longitude];
 
         const shouldUpdate =
           !userLocation ||
@@ -71,12 +74,12 @@ const Mapguider = ({ destination }) => {
         if (shouldUpdate) setUserLocation(newLocation);
       },
       (error) => {
-        const msg = {
-          1: "Location access denied. Please enable location services.",
-          2: "Location information unavailable.",
-          3: "Location request timed out.",
+        const ERR_MSG = {
+          1: "Location access denied. Enable location services.",
+          2: "Location unavailable.",
+          3: "Location request timeout.",
         };
-        alert(msg[error.code] || "Unable to get your location");
+        alert(ERR_MSG[error.code] || "Unable to get your location");
       },
       {
         enableHighAccuracy: false,
@@ -88,7 +91,9 @@ const Mapguider = ({ destination }) => {
     return () => navigator.geolocation.clearWatch(watchId);
   }, [userLocation]);
 
-  // Calculate route
+  // -----------------------------
+  // Route calculation logic
+  // -----------------------------
   useEffect(() => {
     if (!userLocation || !destination) return;
 
@@ -98,8 +103,8 @@ const Mapguider = ({ destination }) => {
 
     if (routeTimeoutRef.current) clearTimeout(routeTimeoutRef.current);
 
+    // Skip duplicate calculations
     if (routeCalculatedRef.current && lastRouteKeyRef.current === routeKey) {
-      console.log("Route already calculated.");
       return;
     }
 
@@ -108,6 +113,7 @@ const Mapguider = ({ destination }) => {
       lastRouteKeyRef.current = routeKey;
 
       setIsRouting(true);
+      setRoutingError("");
 
       const tryRoutingService = async (serviceName) => {
         try {
@@ -153,7 +159,7 @@ const Mapguider = ({ destination }) => {
             }
           }
         } catch (err) {
-          console.error(`${serviceName} failed:`, err);
+          console.error(`${serviceName} failed`, err);
           return null;
         }
       };
@@ -172,6 +178,9 @@ const Mapguider = ({ destination }) => {
         } else {
           setRouteCoords([]);
           setRoutingService(null);
+          setRoutingError(
+            "Couldn't calculate driving route. You can still navigate via Google Maps on the ticket page."
+          );
         }
       }
 
@@ -179,32 +188,35 @@ const Mapguider = ({ destination }) => {
     }, 1000);
   }, [userLocation, destination]);
 
-  // Reset logic when destination changes
+  // Reset routing when destination changes
   useEffect(() => {
     if (destination) {
       routeCalculatedRef.current = false;
       lastRouteKeyRef.current = "";
       setRouteCoords([]);
       setRoutingService(null);
+      setRoutingError("");
     }
   }, [destination]);
 
-  // Icons
+  // -----------------------------
+  // Marker icons
+  // -----------------------------
   const startIcon = new L.Icon({
     iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
     iconSize: [25, 41],
     iconAnchor: [12, 41],
-    className: "start-marker",
   });
 
   const destinationIcon = new L.Icon({
-    iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+    iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-red.png",
     iconSize: [30, 46],
     iconAnchor: [15, 46],
-    className: "destination-marker",
   });
 
-  // Loading states
+  // -----------------------------
+  // Loading / Empty UI
+  // -----------------------------
   if (!userLocation) {
     return (
       <div className="flex items-center justify-center h-64 bg-gray-100">
@@ -250,23 +262,24 @@ const Mapguider = ({ destination }) => {
 
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; OpenStreetMap contributors'
+          attribution="&copy; OpenStreetMap contributors"
         />
 
-        <Marker position={userLocation} icon={destinationIcon}>
+        {/* current location */}
+        <Marker position={userLocation} icon={startIcon}>
           <Popup>
             <div className="text-center">
-              <p className="font-bold text-green-600">📍 Your Current Location</p>
-              <p className="text-sm text-gray-600">Start your journey from here</p>
+              <p className="font-bold text-green-600">📍 Your Location</p>
+              <p className="text-sm text-gray-600">Starting point</p>
             </div>
           </Popup>
         </Marker>
 
-        <Marker position={destination} icon={startIcon}>
+        {/* destination */}
+        <Marker position={destination} icon={destinationIcon}>
           <Popup>
             <div className="text-center">
               <p className="font-bold text-red-600">🎯 Parking Destination</p>
-              <p className="text-sm text-gray-600">Your parking spot is here</p>
             </div>
           </Popup>
         </Marker>
@@ -275,23 +288,30 @@ const Mapguider = ({ destination }) => {
           <div className="absolute top-2 right-2 bg-white bg-opacity-90 rounded-lg px-3 py-1 shadow-md z-[1000]">
             <div className="flex items-center gap-2">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-              <span className="text-sm text-blue-800">Calculating road route...</span>
+              <span className="text-sm text-blue-800">
+                Calculating route...
+              </span>
             </div>
+          </div>
+        )}
+
+        {routingError && !isRouting && (
+          <div className="absolute bottom-2 left-2 bg-white bg-opacity-90 rounded-lg px-3 py-2 shadow-md z-[1000] max-w-xs">
+            <p className="text-xs text-red-600">{routingError}</p>
           </div>
         )}
 
         {routeCoords.length > 0 && (
           <>
-            <Polyline positions={routeCoords} color="#000000" weight={12} opacity={0.3} />
+            <Polyline positions={routeCoords} color="#000" weight={12} opacity={0.3} />
             <Polyline positions={routeCoords} color="#1E40AF" weight={8} opacity={0.6} />
-            <Polyline positions={routeCoords} color="#3B82F6" weight={5} opacity={1.0} />
-            <Polyline positions={routeCoords} color="#FFFFFF" weight={2} opacity={1.0} />
+            <Polyline positions={routeCoords} color="#3B82F6" weight={5} opacity={1} />
+            <Polyline positions={routeCoords} color="#FFF" weight={2} opacity={1} />
             <Polyline
               positions={routeCoords}
               color="#3B82F6"
               weight={1}
-              opacity={1.0}
-              dashArray="6, 3"
+              dashArray="6,3"
             />
           </>
         )}

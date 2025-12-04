@@ -1,63 +1,79 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 let ai = null;
 let chat = null;
 
+// -----------------------------------------
+// Initialize Gemini instance
+// -----------------------------------------
 try {
-  if (import.meta.env.VITE_GEMINI_API_KEY) {
-    ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+  const key = import.meta.env.VITE_GEMINI_API_KEY;
+
+  if (!key) {
+    console.error("Gemini API key is missing. Bot disabled.");
   } else {
-    console.error(
-      "Gemini API key is not available. The AI assistant will be disabled."
-    );
+    ai = new GoogleGenerativeAI(key);
   }
 } catch (error) {
-  console.error("Failed to initialize GoogleGenAI:", error);
+  console.error("Failed to initialize Gemini:", error);
 }
 
+// -----------------------------------------
+// Start chat session with system instruction
+// -----------------------------------------
 const initializeChat = () => {
-  if (!ai) return;
-  const systemInstruction = `You are Parky, a friendly and helpful AI assistant for the UrbPark application. 
-    Your goal is to assist users with questions about finding parking, booking, payments, listing their own space, and troubleshooting issues.
-    Be concise, clear, and maintain a positive and helpful tone.
-    - Booking: A user finds a lot, books it, and gets a QR code.
-    - Cancellation Policy: They get a notification after 30 mins if not arrived. The booking is automatically cancelled after 1 hour of no-show.
-    - Payment: Prepaid or Pay-as-you-go at the lot.
-    - Listing a space: Users can submit a form to list their own parking space, which is then reviewed by an admin.
-    Do not provide information outside of the scope of the UrbPark application.`;
+  if (!ai) return null;
 
-  chat = ai.chats.create({
-    model: "gemini-2.5-flash",
-    config: {
+  const systemInstruction = `
+    You are Parky, a friendly parking assistant.
+    Help users find parking, understand booking rules,
+    calculate cost, explain features, and provide directions.
+    Keep responses simple, helpful, and accurate.
+  `;
+
+  try {
+    const model = ai.getGenerativeModel({
+      model: "gemini-1.5-flash", // ✔ correct working model
       systemInstruction,
-      temperature: 0.7,
-      topP: 0.9,
-    },
-    // The thinking config is omitted to use default high-quality reasoning
-  });
+    });
+
+    chat = model.startChat({
+      generationConfig: {
+        temperature: 0.7,
+        topP: 0.9,
+      },
+    });
+
+    return chat;
+  } catch (err) {
+    console.error("Failed to start Gemini chat:", err);
+    return null;
+  }
 };
 
+// -----------------------------------------
+// Public: Stream AI response
+// -----------------------------------------
 export const getBotResponseStream = async function* (history, newMessage) {
   if (!ai) {
-    yield "Sorry, the AI assistant is currently unavailable due to a configuration issue.";
+    yield "Sorry, AI assistant is unavailable right now.";
     return;
   }
 
-  if (!chat) {
-    initializeChat();
-  }
+  if (!chat) initializeChat();
 
   try {
-    const response = await chat.sendMessageStream({ message: newMessage });
-    for await (const chunk of response) {
-      if (chunk.text) {
-        yield chunk.text;
-      }
+    const resp = await chat.sendMessageStream(newMessage);
+
+    for await (const chunk of resp.stream) {
+      const text = chunk.text();
+      if (text) yield text;
     }
-  } catch (error) {
-    console.error("Error fetching bot response:", error);
-    yield "I'm having trouble connecting right now. Please try again later.";
-    // Reset chat on error
+  } catch (err) {
+    console.error("Chatbot error:", err);
+    yield "Oops! I couldn’t respond right now.";
+
+    // Reset chat session so next request works
     chat = null;
   }
 };

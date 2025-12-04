@@ -11,10 +11,21 @@ const {auth} = require("./middleware/auth");
 const get_method_router = require("./router/get_method_router");
 const historyRouter = require("./router/historyRouter");
 const bookRouter = require("./router/bookRouter");
+const paymentRoutes=require("./routes/paymentRoutes.js");
+const notificationsRouter=require("./routes/notifications.js");
+const cors = require("cors");
+app.use(cors({
+  origin: process.env.FRONTEND_URL || "http://localhost:5174",
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
 dotenv.config();
 app.use(cookieParser());
 app.use(express.json());
-
+app.use("/payment", paymentRoutes);
+app.use("/notifications", notificationsRouter);
 //price_per_hour, lat, long
 app.get("/", async (req, res) => {
   res.send("working..");
@@ -25,6 +36,7 @@ app.post("/signup", async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
     console.log(name);
+    console.log(password);
 
     const existing = await prisma.user.findUnique({
       where: { email }
@@ -70,6 +82,8 @@ app.post('/login',async(req,res)=>{
 
    
    console.log(email);
+   console.log(password);
+
    //console.log(zoho_visitor_id);
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required" });

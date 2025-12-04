@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
+import backendAuth from "../services/backendService";
+
 
 const Header = ({ user, onLoginClick, onProtectedNav, isAdmin }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -10,20 +12,22 @@ const Header = ({ user, onLoginClick, onProtectedNav, isAdmin }) => {
   const navigate = useNavigate();
 
   // -------------------------------
-  // Logout Handler
+  // Logout (PostgreSQL)
   // -------------------------------
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      await backendAuth.logout();
+ // clears cookie/JWT on frontend
       toast.success("Logged out successfully!");
       navigate("/");
-    } catch (error) {
-      toast.error("Error logging out");
+    } catch (err) {
+      console.error("Logout failed:", err);
+      toast.error("Unable to logout. Please try again.");
     }
   };
 
   // -------------------------------
-  // Navigation Handler
+  // Protected navigation
   // -------------------------------
   const handleNavClick = (path) => {
     if (!user) {
@@ -35,16 +39,16 @@ const Header = ({ user, onLoginClick, onProtectedNav, isAdmin }) => {
   };
 
   // -------------------------------
-  // Mobile Menu Controls
+  // Mobile menu controls
   // -------------------------------
   const openMobileMenu = () => {
     setMobileOpen(true);
-    setTimeout(() => setAnimateMenu(true), 50);
+    setTimeout(() => setAnimateMenu(true), 60);
   };
 
   const closeMobileMenu = () => {
     setAnimateMenu(false);
-    setTimeout(() => setMobileOpen(false), 300);
+    setTimeout(() => setMobileOpen(false), 250);
   };
 
   const toggleMobileMenu = () => {
@@ -65,7 +69,7 @@ const Header = ({ user, onLoginClick, onProtectedNav, isAdmin }) => {
   }, []);
 
   // -------------------------------
-  // Disable body scroll when mobile menu is open
+  // Disable body scroll when menu open
   // -------------------------------
   useEffect(() => {
     document.body.style.overflow = mobileOpen ? "hidden" : "auto";
@@ -73,17 +77,17 @@ const Header = ({ user, onLoginClick, onProtectedNav, isAdmin }) => {
   }, [mobileOpen]);
 
   // -------------------------------
-  // Render Component
+  // Render UI
   // -------------------------------
   return (
     <header className="bg-yellow-400 shadow-md py-5 px-6 sticky top-0 z-50">
       <div className="flex items-center justify-between">
 
-        {/* Logo + Mobile Toggle */}
+        {/* LEFT: Logo / Mobile toggle */}
         <div className="flex items-center space-x-4">
           <button
             onClick={toggleMobileMenu}
-            className="md:hidden text-gray-900 hover:text-white transition-all"
+            className="md:hidden text-gray-900 hover:text-white transition"
           >
             <svg className="h-7 w-7" fill="none" stroke="currentColor">
               <path
@@ -105,9 +109,11 @@ const Header = ({ user, onLoginClick, onProtectedNav, isAdmin }) => {
           </NavLink>
         </div>
 
-        {/* Desktop Navigation */}
+        {/* CENTER: Desktop nav */}
         <nav className="hidden md:flex space-x-10 text-lg ml-8">
-          <NavLink className="nav-item" to="/">Home</NavLink>
+          <NavLink className="nav-item" to="/">
+            Home
+          </NavLink>
 
           <button className="nav-item" onClick={() => handleNavClick("/find")}>
             Find Parking
@@ -121,7 +127,7 @@ const Header = ({ user, onLoginClick, onProtectedNav, isAdmin }) => {
           </button>
         </nav>
 
-        {/* User / Login */}
+        {/* RIGHT: User dropdown / login */}
         <div className="relative" ref={dropdownRef}>
           {user ? (
             <>
@@ -129,18 +135,23 @@ const Header = ({ user, onLoginClick, onProtectedNav, isAdmin }) => {
                 onClick={() => setDropdownOpen((prev) => !prev)}
                 className="w-10 h-10 rounded-full bg-gray-900 text-white flex items-center justify-center hover:scale-105 transition"
               >
-                {user.email.charAt(0).toUpperCase()}
+                {user.email?.charAt(0).toUpperCase() || "U"}
               </button>
 
               {dropdownOpen && (
-                <div className="user-dropdown">
-                  <div className="user-info">
-                    <p className="small-heading">Signed in as</p>
-                    <p className="email">{user.email}</p>
+                <div className="absolute right-0 mt-2 w-56 bg-white shadow-lg rounded-lg">
+                  <div className="px-4 py-3 border-b">
+                    <p className="text-xs text-gray-600">Signed in as</p>
+                    <p className="text-sm font-medium text-gray-800">
+                      {user.email}
+                    </p>
                   </div>
 
-                  <button onClick={handleLogout} className="logout-btn">
-                    🔓 Logout
+                  <button
+                    onClick={handleLogout}
+                    className="w-full text-left px-4 py-3 text-red-600 hover:bg-red-50"
+                  >
+                    Logout
                   </button>
                 </div>
               )}
@@ -154,20 +165,16 @@ const Header = ({ user, onLoginClick, onProtectedNav, isAdmin }) => {
       </div>
 
       {/* --------------------------
-          Mobile Sidebar Navigation
+          MOBILE NAVIGATION SIDEBAR
       --------------------------- */}
       {mobileOpen && (
         <>
-          {/* Background overlay */}
           <div
             className={`mobile-overlay ${animateMenu ? "show" : ""}`}
             onClick={closeMobileMenu}
           />
 
-          {/* Sidebar */}
-          <div
-            className={`mobile-sidebar ${animateMenu ? "open" : ""}`}
-          >
+          <div className={`mobile-sidebar ${animateMenu ? "open" : ""}`}>
             <button onClick={closeMobileMenu} className="mobile-close-btn">
               ✕
             </button>
